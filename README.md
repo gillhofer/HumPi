@@ -18,8 +18,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 The demo within the python directory captures the signal from an usb-sound card and calculates the frequency.
 
 ###Currently working on
-* Continuously recording the hum
-* while processing it concurrently.
+* Continuously record the signal while concurrently processing it .
 
 
 
