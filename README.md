@@ -1,8 +1,6 @@
 #HumPi
 Using a Raspberry Pi to measure the frequency of the synchronous grid of continental europe
 
-### Version 0.1
-
 ## Hardware requirements
 * Raspberry Pi 2
 * a [VoltageDivider](https://en.wikipedia.org/wiki/Voltage_divider) to 30mV
@@ -13,9 +11,13 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 * [numexpr](https://github.com/pydata/numexpr)
 * pyaudio (`sudo apt-get install python-pyaudio` )
 
+==========================
+
+### Version 0.1
+
 The demo within the python directory captures the signal from an usb-sound card and calculates the frequency.
 
-Currently working on
+###Currently working on
 * Continuously recording the hum
 * while processing it concurrently.
 
