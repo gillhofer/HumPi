@@ -3,6 +3,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 
 ## Hardware requirements
 * Raspberry Pi 2
+* USB-Soundcard with a microphone or line input
 * a [VoltageDivider](https://en.wikipedia.org/wiki/Voltage_divider) to 30mV
 * a [Phone Connector](https://en.wikipedia.org/wiki/Phone_connector_%28audio%29)
 
