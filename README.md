@@ -14,7 +14,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 
 ==========================
 
-### Version 0.1
+### Version 0.4
 
 The demo within the `python` directory captures the signal and calculates the frequency on the fly.
 
