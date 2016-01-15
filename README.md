@@ -17,7 +17,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 
 ### Version 0.4.1
 
-The demo within the `python` directory captures the signal and calculates the frequency on the fly.
+The demo within the `python` directory captures the signal and calculates the frequency on the fly. The system shows the exact same numbers as the ones from the [netzsinus](https://www.netzsin.us/) projekt.
 
 ## TODO
 * createa a HumPi 'service'
