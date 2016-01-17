@@ -27,7 +27,7 @@ RATE = 24000
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 FRAMESIZE = 512
 ne.set_num_threads(3)
-LOG_SIZE = 15
+LOG_SIZE = 100
 MEASUREMENTS_FILE = "measurments.csv"
 
 
@@ -174,7 +174,7 @@ class Analyze_Hum(threading.Thread):
         print(self.name ,"* Finished measurements, average measurement duration is", totalTime/number)
 
 def signal_handler(signal, frame):
-        print('Exiting HumPi')
+        print(' --> Exiting HumPi')
 	stopSignal.set()
 	time.sleep(0.5)
 	log.saveToDisk()
