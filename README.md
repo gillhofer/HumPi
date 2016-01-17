@@ -18,7 +18,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 
 ### Version 0.5.1
 
-Once started, HumPi captures the signal from an USB-Soundcard and calculates the frequency continuously by fitting a sine wave on a one second stretch of 'sound'. Currently the data is stored to disk. In future versions it might get sent to the [netzsinus](https://github.com/netzsinus) project. 
+Once started, HumPi captures the signal from an USB-Soundcard and calculates the frequency continuously by fitting a sine wave on the last second of 'sound'. Currently the data is stored to disk. In future versions it might get sent to the [netzsinus](https://github.com/netzsinus) project. 
 
 ### Install & Run
 ```
