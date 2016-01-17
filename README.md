@@ -9,6 +9,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 * [Phone connector](https://en.wikipedia.org/wiki/Phone_connector_%28audio%29)
 
 ## Software requirements
+* Python
 * SciPy ([HowTo](http://wyolum.com/numpyscipymatplotlib-on-raspberry-pi/))
 * [numexpr](https://github.com/pydata/numexpr) for 2x faster measurements
 * alsaaudio (`sudo pip install pyalsaaudio` )
@@ -18,6 +19,12 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 ### Version 0.5.1
 
 Once started, HumPi captures the signal from an USB-Soundcard and calculates the frequency continuously by fitting a sine wave on a one second stretch of 'sound'. Currently the data is stored to disk. In future versions it might get sent to the [netzsinus](https://github.com/netzsinus) project. 
+
+### Install & Run
+```
+git clone https://github.com/gillhofer/HumPi.git
+./HumPi/python/HumPi.py
+```
 
 ## TODO
 * Send data to the [netzsinus](https://github.com/netzsinus) project
