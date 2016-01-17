@@ -18,17 +18,18 @@ from numpy import sin, pi
 
 
 
-MEASURMENT_DURATION = 1
-#WAVE_OUTPUT_FILENAME = "output.wav"
+MEASUREMENT_TIMEFRAME = 1 #second
 BUFFERMAXSIZE = 10 #seconds
-CHANNELS = 1
-INPUT_CHANNEL=2
-RATE = 24000
+LOG_SIZE = 100 #measurments
+MEASUREMENTS_FILE = "measurments.csv"
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
+INPUT_CHANNEL=2
+CHANNELS = 1
+RATE = 24000
 FRAMESIZE = 512
 ne.set_num_threads(3)
-LOG_SIZE = 100
-MEASUREMENTS_FILE = "measurments.csv"
+
+SANITY_MAX_FREQUENCYCHANGE = 0.07 #Hz/s
 
 
 # A multithreading compatible buffer. Tuned for maximum write_in performance
@@ -67,36 +68,35 @@ class Buffer():
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.  
 
 class Log():
-    def __init__(self):
-        self.offset = self.getoffset()
-        print("The clock is ", self.offset, "seconds wrong. Changing timestamps")
-        self.data = np.zeros([LOG_SIZE,2],dtype='d')
-        self.index =0
+	def __init__(self):
+		self.offset = self.getoffset()
+		print("The clock is ", self.offset, "seconds wrong. Changing timestamps")
+		self.data = np.zeros([LOG_SIZE,2],dtype='d')
+		self.index =0
         
     
-    def getoffset(self):
-        c = ntplib.NTPClient()
-        response = c.request('europe.pool.ntp.org', version=3)
-        return response.offset
+	def getoffset(self):
+		c = ntplib.NTPClient()
+		response = c.request('europe.pool.ntp.org', version=3)
+		return response.offset
 
-    def store(self,frequency, calculationTime):
-        currTime = time.time() +self.offset- calculationTime - MEASURMENT_DURATION/2
-        self.data[self.index] =  [currTime, frequency]
-        print(time.ctime(self.data[self.index,0]), self.data[self.index,1])
-        self.index += 1
-        if self.index==LOG_SIZE:
-            # send it to Netzsinus
-            # for now save it to disk.
-            self.saveToDisk()
-            #self.offset=self.getoffset()
+	def store(self,frequency, calculationTime):
+		currTime = time.time() +self.offset- calculationTime - MEASUREMENT_TIMEFRAME/2
+		self.data[self.index] =  [currTime, frequency]
+		print(time.ctime(self.data[self.index,0]), self.data[self.index,1])
+		self.index += 1
+		if self.index==LOG_SIZE:
+			# send it to Netzsinus
+			# for now save it to disk.
+			self.saveToDisk()
+		
 
-
-    def saveToDisk(self):
-	print("========= Storing logfile ========= ")
-        with open(MEASUREMENTS_FILE, 'a') as f:
-            np.savetxt(f, self.data[:self.index-1],delimiter=",")
-        self.data = np.zeros([LOG_SIZE,2],dtype='d')
-        self.index =0
+	def saveToDisk(self):
+		print("========= Storing logfile ========= ")
+		with open(MEASUREMENTS_FILE, 'a') as f:
+			np.savetxt(f, self.data[:self.index-1],delimiter=",")
+		self.data = np.zeros([LOG_SIZE,2],dtype='d')
+		self.index =0
 
 
 class Capture_Hum (threading.Thread):
@@ -146,32 +146,32 @@ class Analyze_Hum(threading.Thread):
             return err
         
         print(self.name ,"* Started measurements")
-        x = np.divide(np.arange(RATE*MEASURMENT_DURATION),np.array(RATE,dtype=float))
+        x = np.divide(np.arange(RATE*MEASUREMENT_TIMEFRAME),np.array(RATE,dtype=float))
         a = 0.2
         b = 50
         c = 0
         
         analyze_start = time.time()
-        number = 0;
-        totalTime = 0
-        #while time.time() - analyze_start < self.seconds:
+        measurmentTime = np.array([[b,analyze_start]], dtype='d')
+        measurmentTime = np.repeat(measurmentTime,5, axis=0)
         while (not self.stopSignal.is_set()):
-            start_time = time.time()
-            y = self.buffer.get(RATE*MEASURMENT_DURATION)
+            analyze_start = time.time()
+            y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
-            took = time.time() - start_time
-            if np.abs(b-plsq[0][1]) < 0.1:
-                #sanitycheck
+            mean = np.mean(measurmentTime,axis=0)
+            diffPerSecond = (mean[0]-plsq[0][1])/(mean[1]-time.time())
+            #sanitycheck
+	    if diffPerSecond < SANITY_MAX_FREQUENCYCHANGE:
+                measurmentTime = np.roll(measurmentTime,0)
+                measurmentTime[0,0] = plsq[0][1]
+                measurmentTime[0,1] = time.time() 
                 a = plsq[0][0]
                 b = plsq[0][1]
                 c = plsq[0][2]
-                number += 1
-                totalTime += took
-                log.store(b,took)
-                #print("Analyze: Frequency =", b, "measured in", time.time() - start_time)
+                log.store(b,time.time()-analyze_start)
+                #print(" -> ", diffPerSecond)
             else:
-                print("Analyze: Mesurement seems to be faulty. Frequency changed for", np.abs(b-plsq[0][1]))
-        print(self.name ,"* Finished measurements, average measurement duration is", totalTime/number)
+                print("Analyze: Mesurement seems to be faulty. Frequency changed for", diffPerSecond)
 
 def signal_handler(signal, frame):
         print(' --> Exiting HumPi')
@@ -183,13 +183,13 @@ def signal_handler(signal, frame):
 
 
 log = Log()
-databuffer = Buffer(RATE*MEASURMENT_DURATION, RATE*BUFFERMAXSIZE)
+databuffer = Buffer(RATE*MEASUREMENT_TIMEFRAME, RATE*BUFFERMAXSIZE)
 stopSignal = threading.Event()
 signal.signal(signal.SIGINT, signal_handler)
 
 capture = Capture_Hum(1,"Capture", databuffer, stopSignal)
 capture.start()
-time.sleep(MEASURMENT_DURATION+0.05)
+time.sleep(MEASUREMENT_TIMEFRAME+0.05)
 analyze = Analyze_Hum(2,"Analyze", databuffer,log, stopSignal)
 analyze.start()
 signal.pause()
