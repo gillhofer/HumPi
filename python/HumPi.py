@@ -88,7 +88,7 @@ class Log():
             # send it to Netzsinus
             # for now save it to disk.
             self.saveToDisk()
-            self.offset=self.getoffset()
+            #self.offset=self.getoffset()
 
 
     def saveToDisk(self):
