@@ -30,6 +30,8 @@ FRAMESIZE = 512
 ne.set_num_threads(3)
 
 SANITY_MAX_FREQUENCYCHANGE = 0.07 #Hz/s
+SANITY_UPPER_BOUND = 50.3
+SANITY_LOWER_BOUND = 49.7
 
 
 # A multithreading compatible buffer. Tuned for maximum write_in performance
@@ -158,6 +160,8 @@ class Analyze_Hum(threading.Thread):
             analyze_start = time.time()
             y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
+            if (plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND)
+		plsq = leastsq(residuals, np.array([0.2,50,0]),args=(x,y))
             mean = np.mean(measurmentTime,axis=0)
             diffPerSecond = (mean[0]-plsq[0][1])/(mean[1]-time.time())
             #sanitycheck
