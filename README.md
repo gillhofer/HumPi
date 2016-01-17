@@ -9,7 +9,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 * [Phone connector](https://en.wikipedia.org/wiki/Phone_connector_%28audio%29)
 
 ## Software requirements
-* Python
+* Python2
 * SciPy ([HowTo](http://wyolum.com/numpyscipymatplotlib-on-raspberry-pi/))
 * [numexpr](https://github.com/pydata/numexpr) for 2x faster measurements
 * alsaaudio (`sudo pip install pyalsaaudio` )
