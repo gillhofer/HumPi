@@ -29,7 +29,9 @@ RATE = 24000
 FRAMESIZE = 512
 ne.set_num_threads(3)
 
-SANITY_MAX_FREQUENCYCHANGE = 0.07 #Hz/s
+SANITY_MAX_FREQUENCYCHANGE = 0.03
+SANITY_UPPER_BOUND = 50.4
+SANITY_LOWER_BOUND = 49.6
 
 
 # A multithreading compatible buffer. Tuned for maximum write_in performance
@@ -83,7 +85,7 @@ class Log():
 	def store(self,frequency, calculationTime):
 		currTime = time.time() +self.offset- calculationTime - MEASUREMENT_TIMEFRAME/2
 		self.data[self.index] =  [currTime, frequency]
-		print(time.ctime(self.data[self.index,0]), self.data[self.index,1])
+		print(time.ctime(self.data[self.index,0]), self.data[self.index,1], calculationTime)
 		self.index += 1
 		if self.index==LOG_SIZE:
 			# send it to Netzsinus
@@ -151,28 +153,37 @@ class Analyze_Hum(threading.Thread):
         b = 50
         c = 0
         
-        analyze_start = time.time()
-        measurmentTime = np.array([[b,analyze_start]], dtype='d')
-        measurmentTime = np.repeat(measurmentTime,5, axis=0)
+	lastMeasurmentTime = 0
+	y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
+        plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
+        a = plsq[0][0]
+        b = plsq[0][1]
+        c = plsq[0][2]
+		
         while (not self.stopSignal.is_set()):
             analyze_start = time.time()
             y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
-            mean = np.mean(measurmentTime,axis=0)
-            diffPerSecond = (mean[0]-plsq[0][1])/(mean[1]-time.time())
-            #sanitycheck
-	    if diffPerSecond < SANITY_MAX_FREQUENCYCHANGE:
-                measurmentTime = np.roll(measurmentTime,0)
-                measurmentTime[0,0] = plsq[0][1]
-                measurmentTime[0,1] = time.time() 
-                a = plsq[0][0]
-                b = plsq[0][1]
-                c = plsq[0][2]
-                log.store(b,time.time()-analyze_start)
-                #print(" -> ", diffPerSecond)
-            else:
-                print("Analyze: Mesurement seems to be faulty. Frequency changed for", diffPerSecond)
-
+            if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
+	    	print("Trying again", plsq[0][1], "looks fishy")
+		plsq = leastsq(residuals, np.array([0.2,50,0]),args=(x,y))
+	    if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
+		print("Now got", plsq[0][1], "Buffer data is Corrupt, need new data")
+		time.sleep(MEASUREMENT_TIMEFRAME)
+		print("Back up, continue measuring")	    
+	    else:
+		frqChange = np.abs(plsq[0][1] - b)
+		frqChangeTime = time.time() - lastMeasurmentTime
+		if frqChange/frqChangeTime <  SANITY_MAX_FREQUENCYCHANGE:
+			a = plsq[0][0]
+        		b = plsq[0][1]
+        		c = plsq[0][2]
+			lastMeasurmentTime = time.time()
+	       		log.store(b,lastMeasurmentTime-analyze_start)
+        	else: 
+			print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
+			time.sleep(MEASUREMENT_TIMEFRAME)	    
+	    
 def signal_handler(signal, frame):
         print(' --> Exiting HumPi')
 	stopSignal.set()
