@@ -21,7 +21,7 @@ from numpy import sin, pi
 MEASUREMENT_TIMEFRAME = 1 #second
 BUFFERMAXSIZE = 10 #seconds
 LOG_SIZE = 100 #measurments
-MEASUREMENTS_FILE = "measurments.csv"
+MEASUREMENTS_FILE = "measurements.csv"
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 INPUT_CHANNEL=2
 CHANNELS = 1
@@ -112,7 +112,8 @@ class Capture_Hum (threading.Thread):
     def run(self):
         recorder=alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
                        alsaaudio.PCM_NORMAL, 
-                       u'sysdefault:CARD=Device')
+                      # u'hw:CARD=Device,DEV=0')
+                       u'default')
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
         recorder.setformat(INFORMAT)

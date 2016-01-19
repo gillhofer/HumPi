@@ -4,16 +4,19 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 ## Hardware requirements
 * Raspberry Pi 2
 * USB-Soundcard with a microphone or line input
-* AC-Power supply with V_out <  ~10V.
-* [Voltage divider](https://en.wikipedia.org/wiki/Voltage_divider) to 30mV
+* AC-Power supply with V_out smaller than ~10V.
+* [Voltage divider](https://en.wikipedia.org/wiki/Voltage_divider) to
+	30mV for microphone input, 1V RMS for line in
 * [Phone connector](https://en.wikipedia.org/wiki/Phone_connector_%28audio%29)
 
 ## Software requirements
 * Python2
 * SciPy ([HowTo](http://wyolum.com/numpyscipymatplotlib-on-raspberry-pi/))
 * [numexpr](https://github.com/pydata/numexpr) for 2x faster measurements
-* alsaaudio (`sudo pip install pyalsaaudio` )
-
+* alsaaudio and ntplib. You can install these via pip:
+````
+    $ pip install -r requirements.txt
+````
 ==========================
 
 ### Version 0.5.1
