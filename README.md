@@ -14,8 +14,9 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 * SciPy ([HowTo](http://wyolum.com/numpyscipymatplotlib-on-raspberry-pi/))
 * [numexpr](https://github.com/pydata/numexpr) for 2x faster measurements
 * alsaaudio and ntplib. You can install these via pip:
+````
     $ pip install -r requirements.txt
-
+````
 ==========================
 
 ### Version 0.5.1
