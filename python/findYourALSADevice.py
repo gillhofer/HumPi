@@ -1,21 +1,25 @@
 #!/usr/bin/python2
 
+from __future__ import print_function
+
 import alsaaudio
 import numpy as np
 import array
 import matplotlib.pyplot as plt
 
-devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
+
 print(" ")
-print("======================================")
-print("Use this tool to find your ALSA Device")
+print("================================================================================")
+print("Use me to find your ALSA Device number")
 print("I will listen to all devices on your system and plot their current input signal.")
 print("Use the device which best represents a sine wave.")
-print("======================================")
+print("================================================================================")
 
+devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
+j = 1
 for device in devices:
 	try:
-		print "u'{}'".format(device)		
+		print(j,"),  u'", device, "'", sep="")		
 		recorder=alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
                 alsaaudio.PCM_NORMAL,
                 device)
@@ -34,4 +38,6 @@ for device in devices:
 		plt.show()
 	except: 
 		print("Device", device, "led to an error")
+	finally:
+		j += 1
 

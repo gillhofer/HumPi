@@ -12,6 +12,8 @@ import array
 import time
 import ntplib
 
+import argparse
+
 from scipy.optimize import leastsq
 from numpy import sin, pi
 #from scipy.io import wavfile
@@ -33,9 +35,17 @@ SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
 
-# get yours with  
-# alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
+
 AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
+
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d","--device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
+args = parser.parse_args()
+devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
+AUDIO_DEVICE_STRING = devices[args.device-1]
+print("Using Audio Device", AUDIO_DEVICE_STRING)
 
 
 
@@ -131,7 +141,7 @@ class Capture_Hum (threading.Thread):
             while (not self.stopSignal.is_set()):
             #for i in range(0, int(RATE / FRAMESIZE * self.seconds)):
                 self.buffer.extend(recorder.read())
-        except Exception,e:
+        except Exception as e:
             print(self.name ,str(e))
         print(self.name ,"* stopped recording")
 
@@ -160,8 +170,8 @@ class Analyze_Hum(threading.Thread):
         b = 50
         c = 0
         
-	lastMeasurmentTime = 0
-	y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
+        lastMeasurmentTime = 0
+        y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
         plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
         a = plsq[0][0]
         b = plsq[0][1]
@@ -172,32 +182,32 @@ class Analyze_Hum(threading.Thread):
             y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-	    	print("Trying again", plsq[0][1], "looks fishy")
-		plsq = leastsq(residuals, np.array([0.2,50,0]),args=(x,y))
-	    if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-		print("Now got", plsq[0][1], "Buffer data is Corrupt, need new data")
-		time.sleep(MEASUREMENT_TIMEFRAME)
-		print("Back up, continue measuring")	    
-	    else:
-		frqChange = np.abs(plsq[0][1] - b)
-		frqChangeTime = time.time() - lastMeasurmentTime
-		if frqChange/frqChangeTime <  SANITY_MAX_FREQUENCYCHANGE:
-			a = plsq[0][0]
-        		b = plsq[0][1]
-        		c = plsq[0][2]
-			lastMeasurmentTime = time.time()
-	       		log.store(b,lastMeasurmentTime-analyze_start)
-        	else: 
-			print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
-			time.sleep(MEASUREMENT_TIMEFRAME)	    
+                print("Trying again", plsq[0][1], "looks fishy")
+                plsq = leastsq(residuals, np.array([0.2,50,0]),args=(x,y))
+            if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
+                print("Now got", plsq[0][1], "Buffer data is Corrupt, need new data")
+                time.sleep(MEASUREMENT_TIMEFRAME)
+                print("Back up, continue measuring")	    
+            else:
+                frqChange = np.abs(plsq[0][1] - b)
+                frqChangeTime = time.time() - lastMeasurmentTime
+                if frqChange/frqChangeTime <  SANITY_MAX_FREQUENCYCHANGE:
+                    a = plsq[0][0]
+                    b = plsq[0][1]
+                    c = plsq[0][2]
+                    lastMeasurmentTime = time.time()
+                    log.store(b,lastMeasurmentTime-analyze_start)
+                else: 
+                    print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
+                    time.sleep(MEASUREMENT_TIMEFRAME)	    
 	    
 def signal_handler(signal, frame):
-        print(' --> Exiting HumPi')
+	print(' --> Exiting HumPi')
 	stopSignal.set()
 	time.sleep(0.5)
 	log.saveToDisk()
 	time.sleep(0.5)
-        sys.exit(0)
+	sys.exit(0)
 
 
 log = Log()
