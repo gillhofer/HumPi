@@ -28,6 +28,7 @@ Once started, HumPi captures the signal from an USB-Soundcard and calculates the
 git clone https://github.com/gillhofer/HumPi.git
 ./HumPi/python/HumPi.py
 ```
+If your ALSA Device is not found, use the script in the python directory to get your correct device.
 
 ## TODO
 * Send data to the [netzsinus](https://github.com/netzsinus) project
