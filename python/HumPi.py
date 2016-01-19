@@ -33,9 +33,11 @@ SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
 
-#get yours with 
-# alsaaudio.pcms(PCM_CAPTURE)
+# get yours with  
+# alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
+
+
 
 
 # A multithreading compatible buffer. Tuned for maximum write_in performance
