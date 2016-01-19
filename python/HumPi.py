@@ -112,7 +112,8 @@ class Capture_Hum (threading.Thread):
     def run(self):
         recorder=alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
                        alsaaudio.PCM_NORMAL, 
-                       u'hw:CARD=Device,DEV=0')
+                      # u'hw:CARD=Device,DEV=0')
+                       u'default')
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
         recorder.setformat(INFORMAT)
