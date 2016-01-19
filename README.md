@@ -29,7 +29,7 @@ git clone https://github.com/gillhofer/HumPi.git
 ./HumPi/python/HumPi.py -d 3
 ```
 
-Use the `-d` device parameter the specify the alsa device. It can be found by either try and error, or by using the [script](https://github.com/gillhofer/HumPi/blob/master/python/findYourALSADevice.py) within the python directory.
+Use the `-d` device parameter the specify the ALSA device. It can be found by either try and error, or by using the [script](https://github.com/gillhofer/HumPi/blob/master/python/findYourALSADevice.py) within the python directory.
 
 ## TODO
 * Send data to the [netzsinus](https://github.com/netzsinus) project
