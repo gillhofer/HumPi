@@ -20,7 +20,7 @@ from numpy import sin, pi
 
 MEASUREMENT_TIMEFRAME = 1 #second
 BUFFERMAXSIZE = 10 #seconds
-LOG_SIZE = 100 #measurments
+LOG_SIZE = 100 #measurements
 MEASUREMENTS_FILE = "measurements.csv"
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 INPUT_CHANNEL=2
@@ -29,9 +29,13 @@ RATE = 24000
 FRAMESIZE = 512
 ne.set_num_threads(3)
 
-SANITY_MAX_FREQUENCYCHANGE = 0.03
+SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
+
+#get yours with 
+# alsaaudio.pcms(PCM_CAPTURE)
+AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
 
 
 # A multithreading compatible buffer. Tuned for maximum write_in performance
@@ -113,7 +117,7 @@ class Capture_Hum (threading.Thread):
         recorder=alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
                        alsaaudio.PCM_NORMAL, 
                       # u'hw:CARD=Device,DEV=0')
-                       u'default')
+                       AUDIO_DEVICE_STRING)
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
         recorder.setformat(INFORMAT)
