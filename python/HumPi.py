@@ -21,7 +21,7 @@ from numpy import sin, pi
 MEASUREMENT_TIMEFRAME = 1 #second
 BUFFERMAXSIZE = 10 #seconds
 LOG_SIZE = 100 #measurments
-MEASUREMENTS_FILE = "measurments.csv"
+MEASUREMENTS_FILE = "measurements.csv"
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 INPUT_CHANNEL=2
 CHANNELS = 1
