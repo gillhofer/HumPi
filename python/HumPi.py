@@ -14,7 +14,7 @@ import ntplib
 
 import argparse
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 from scipy.optimize import leastsq
 from numpy import sin, pi
@@ -32,6 +32,8 @@ CHANNELS = 1
 RATE = 24000
 FRAMESIZE = 512
 ne.set_num_threads(3)
+
+INITIAL_SIGNAL_AMPLITUDE = 0.2
 
 SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
@@ -168,7 +170,7 @@ class Analyze_Hum(threading.Thread):
         
         print(self.name ,"* Started measurements")
         x = np.divide(np.arange(RATE*MEASUREMENT_TIMEFRAME),np.array(RATE,dtype=float))
-        a = 0.2
+        a = INITIAL_SIGNAL_AMPLITUDE
         b = 50
         c = 0
         
@@ -185,7 +187,7 @@ class Analyze_Hum(threading.Thread):
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
                 print("Trying again", plsq[0][1], "looks fishy")
-                plsq = leastsq(residuals, np.array([0.2,50,0]),args=(x,y))
+                plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE,50,0]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
                 print("Now got", plsq[0][1], "Buffer data is Corrupt, need new data")
                 time.sleep(MEASUREMENT_TIMEFRAME)
@@ -202,8 +204,8 @@ class Analyze_Hum(threading.Thread):
                 else: 
                     print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
                     time.sleep(MEASUREMENT_TIMEFRAME)
-            plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
-	    plt.show()
+            #plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
+	    #plt.show()
 	    
 def signal_handler(signal, frame):
 	print(' --> Exiting HumPi')
