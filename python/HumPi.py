@@ -35,17 +35,12 @@ SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
 
-
-AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
-
-import argparse
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-d","--device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
 args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device-1]
-print("Using Audio Device", AUDIO_DEVICE_STRING)
+print("Using Audio Device:", AUDIO_DEVICE_STRING)
 
 
 
