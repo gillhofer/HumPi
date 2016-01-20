@@ -14,6 +14,8 @@ import ntplib
 
 import argparse
 
+import matplotlib.pyplot as plt
+
 from scipy.optimize import leastsq
 from numpy import sin, pi
 #from scipy.io import wavfile
@@ -35,12 +37,17 @@ SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
 
+
+AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
+
+import argparse
+
 parser = argparse.ArgumentParser()
 parser.add_argument("-d","--device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
 args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device-1]
-print("Using Audio Device:", AUDIO_DEVICE_STRING)
+print("Using Audio Device", AUDIO_DEVICE_STRING)
 
 
 
@@ -194,7 +201,9 @@ class Analyze_Hum(threading.Thread):
                     log.store(b,lastMeasurmentTime-analyze_start)
                 else: 
                     print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
-                    time.sleep(MEASUREMENT_TIMEFRAME)	    
+                    time.sleep(MEASUREMENT_TIMEFRAME)
+            plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
+	    plt.show()
 	    
 def signal_handler(signal, frame):
 	print(' --> Exiting HumPi')
