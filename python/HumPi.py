@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from __future__ import with_statement
+from __future__ import print_function
 
 import numpy as np
 import alsaaudio
@@ -14,20 +15,16 @@ import ntplib
 
 import argparse
 
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 from scipy.optimize import leastsq
 from numpy import sin, pi
-#from scipy.io import wavfile
-
-
 
 MEASUREMENT_TIMEFRAME = 1 #second
-BUFFERMAXSIZE = 10 #seconds
+BUFFERMAXSIZE = 120 #seconds
 LOG_SIZE = 100 #measurements
 MEASUREMENTS_FILE = "measurements.csv"
 INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
-INPUT_CHANNEL=2
 CHANNELS = 1
 RATE = 24000
 FRAMESIZE = 512
@@ -39,11 +36,6 @@ SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
 SANITY_UPPER_BOUND = 50.4
 SANITY_LOWER_BOUND = 49.6
 
-
-AUDIO_DEVICE_STRING = u'sysdefault:CARD=Device'
-
-import argparse
-
 parser = argparse.ArgumentParser()
 parser.add_argument("-d","--device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
 args = parser.parse_args()
@@ -51,41 +43,24 @@ devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device-1]
 print("Using Audio Device", AUDIO_DEVICE_STRING)
 
-
-
-
-# A multithreading compatible buffer. Tuned for maximum write_in performance
-
-#According to 
-#https://stackoverflow.com/questions/7133885/fastest-way-to-grow-a-numpy-numeric-array
-# appending to python arrays is way faster than appending to numpy arrays.
-
-class Buffer():
-    def __init__(self, minSize, maxSize):
-        self.data = array.array('f')
+class RingBuffer():
+    def __init__(self, maxSize):
+    	self.data = np.zeros(maxSize, dtype='f')
+        self.index = 0
         self.lock = threading.Lock()
-        self.minSize = minSize
-        self.maxSize = maxSize
 
-    def extend(self,stream):
-        [length, string] = stream
-        if length > 0:
-            with self.lock:
-                self.data.fromstring(string)
-        
-    def get(self, length):        
-        with self.lock:
-            bufferSize = self.data.buffer_info()[1]
-            if bufferSize >= self.maxSize:
-                #shrink buffer
-                newdata = array.array('f')
-                iterator = (self.data[x] for x in range(bufferSize - self.minSize, bufferSize))
-                newdata.extend(iterator)
-                self.data = newdata
-                bufferSize = self.minSize
-        iterator = (self.data[x] for x in range(bufferSize-length, bufferSize))
-        return np.fromiter(iterator, dtype='f')
+    def extend(self, stream):
+       [length, string] = stream
+       if length > 0:
+           x_index = np.arange(self.index,self.index + length) % self.data.size
+           with self.lock :
+              self.data[x_index] = np.fromstring(string, dtype='f')
+              self.index = x_index[-1] + 1
 
+    def get(self, length):
+       with self.lock:
+          idx = np.arange(self.index-length, self.index) % self.data.size
+          return self.data[idx]
 
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.  
 
@@ -103,8 +78,8 @@ class Log():
 		return response.offset
 
 	def store(self,frequency, calculationTime):
-		currTime = time.time() +self.offset- calculationTime - MEASUREMENT_TIMEFRAME/2
-		self.data[self.index] =  [currTime, frequency]
+		measurmentTime = time.time() + self.offset - calculationTime
+		self.data[self.index] =  [measurmentTime, frequency]
 		print(time.ctime(self.data[self.index,0]), self.data[self.index,1], calculationTime)
 		self.index += 1
 		if self.index==LOG_SIZE:
@@ -132,7 +107,6 @@ class Capture_Hum (threading.Thread):
     def run(self):
         recorder=alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
                        alsaaudio.PCM_NORMAL, 
-                      # u'hw:CARD=Device,DEV=0')
                        AUDIO_DEVICE_STRING)
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
@@ -143,7 +117,6 @@ class Capture_Hum (threading.Thread):
         print(self.name ,"* started recording")
         try:
             while (not self.stopSignal.is_set()):
-            #for i in range(0, int(RATE / FRAMESIZE * self.seconds)):
                 self.buffer.extend(recorder.read())
         except Exception as e:
             print(self.name ,str(e))
@@ -217,7 +190,7 @@ def signal_handler(signal, frame):
 
 
 log = Log()
-databuffer = Buffer(RATE*MEASUREMENT_TIMEFRAME, RATE*BUFFERMAXSIZE)
+databuffer = RingBuffer(RATE*BUFFERMAXSIZE)
 stopSignal = threading.Event()
 signal.signal(signal.SIGINT, signal_handler)
 
