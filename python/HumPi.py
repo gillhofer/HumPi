@@ -5,18 +5,16 @@ from __future__ import print_function
 
 import numpy as np
 import alsaaudio
-import numexpr as ne
+import numexpr
 import threading
 import signal
 import sys
-import array
 import time
 import ntplib
 import argparse
 import requests
-import json
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 from scipy.optimize import leastsq
 from numpy import sin, pi
@@ -25,11 +23,11 @@ MEASUREMENT_TIMEFRAME = 1 #second
 BUFFERMAXSIZE = 120 #seconds
 LOG_SIZE = 100 #measurements
 
-INFORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
+AUDIO_FORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 CHANNELS = 1
 RATE = 24000
 FRAMESIZE = 1024
-ne.set_num_threads(3)
+numexpr.set_num_threads(3)
 
 INITIAL_SIGNAL_AMPLITUDE = 0.2
 
@@ -84,7 +82,6 @@ class RingBuffer():
           return self.data[idx]
 
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.  
-
 class Log():
 	def __init__(self):
 		self.offset = self.getoffset() - FRAMESIZE/RATE
@@ -145,7 +142,7 @@ class Capture_Hum (threading.Thread):
                        AUDIO_DEVICE_STRING)
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
-        recorder.setformat(INFORMAT)
+        recorder.setformat(AUDIO_FORMAT)
         recorder.setperiodsize(FRAMESIZE)
  
 
@@ -172,9 +169,7 @@ class Analyze_Hum(threading.Thread):
             A, k, theta = p
             x = x
             y = y
-            err = ne.evaluate('y - A * sin(2 * pi * k * x + theta)')
-            #err = y - A * sin(2 * pi * k * x + theta)
-            return err
+            return numexpr.evaluate('y - A * sin(2 * pi * k * x + theta)')
         
         print(self.name ,"* Started measurements")
         a = INITIAL_SIGNAL_AMPLITUDE
@@ -211,12 +206,10 @@ class Analyze_Hum(threading.Thread):
                 frqChangeTime = time.time() - lastMeasurmentTime
                 #plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
 	        #plt.show()
-
                 if frqChange/frqChangeTime <  SANITY_MAX_FREQUENCYCHANGE:
                     a = plsq[0][0]
                     b = plsq[0][1]
                     c = plsq[0][2]
-                    #c = (plsq[0][1] % 1) + plsq[0][2]
                     lastMeasurmentTime = time.time()
                     log.store(b,lastMeasurmentTime-analyze_start)
                 else: 
