@@ -20,7 +20,7 @@ Sample circuits can be found within the [HW](https://github.com/gillhofer/HumPi/
 ````
 ==========================
 
-### Version 0.5.1
+### Version 0.6
 
 Once started, HumPi captures the signal from an USB-Soundcard and calculates the frequency continuously by fitting a sine on the last second of 'sound'. The frequency of this sine (= the measurment) may be stored to disc using the `--store` parameter or may be sent to [netzsinus](https://github.com/netzsinus) using the `--sendServer` parameter. In case of sending, please also provide an API-Key by specifying the `--apikey` option. If you are annoyed by the console output, there is a `--silent` option.
 
