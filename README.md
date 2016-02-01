@@ -25,13 +25,12 @@ Once started, HumPi captures the signal from an USB-Soundcard and calculates the
 ### Install & Run
 ```
 git clone https://github.com/gillhofer/HumPi.git
-./HumPi/python/HumPi.py -d 3
+./HumPi.py 3 --sendServer http://netzsin.us:8080 --apikey secretkey1 --store m.csv --silent True
 ```
 
-Use the `-d` device parameter the specify the ALSA device. The parameter can be found by either try and error, or by using the [script](https://github.com/gillhofer/HumPi/blob/master/python/findYourALSADevice.py) within the python directory.
+Use the 'device' parameter the specify the ALSA device. The parameter can be found by either try and error, or by using the [script](https://github.com/gillhofer/HumPi/blob/master/python/findYourALSADevice.py) within the python directory.
 
 ## TODO
-* Send data to the [netzsinus](https://github.com/netzsinus) project
 * general improvements
 
 
