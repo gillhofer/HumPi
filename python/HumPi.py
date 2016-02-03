@@ -19,8 +19,8 @@ import requests
 from scipy.optimize import leastsq
 from numpy import sin, pi
 
-MEASUREMENT_TIMEFRAME = 1 #second
-BUFFERMAXSIZE = 120 #seconds
+MEASUREMENT_TIMEFRAME = 1 #s
+BUFFERMAXSIZE = 120 #s
 LOG_SIZE = 100 #measurements
 
 AUDIO_FORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
@@ -31,15 +31,17 @@ numexpr.set_num_threads(3)
 
 INITIAL_SIGNAL_AMPLITUDE = 0.2
 
-SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz per Second
-SANITY_UPPER_BOUND = 50.4
-SANITY_LOWER_BOUND = 49.6
+SANITY_MAX_FREQUENCYCHANGE = 0.03 #Hz/s
+SANITY_UPPER_BOUND = 50.4 #Hz
+SANITY_LOWER_BOUND = 49.6 #Hz
+
+NTP_TIMESYNC_INTERVAL = 1*60*60#s
 
 parser = argparse.ArgumentParser()
 parser.add_argument("device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
 parser.add_argument("--store", help="The file in which measurments get stored", type=str)
 parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
-parser.add_argument("--metername", help="The name for the meter to use", type=str)
+parser.add_argument("--meterid", help="The name for the meter to use", type=str)
 parser.add_argument("--apikey", help="The API-Key to use", type=str)
 parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.", type=bool)
 
@@ -48,13 +50,13 @@ devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device-1]
 print("Using Audio Device", AUDIO_DEVICE_STRING)
 if args.sendserver:
-	if not args.metername:	
-		print("Please also provide a meter name by specifying the --meterName option")
+	if not args.meterid:	
+		print("Please also provide a meter name by specifying the --meterid option")
 		sys.exit(0)		
 	if not args.apikey:
 		print("Please also provide an API-Key by specifying the --apikey option")
 		sys.exit(0)		
-	SERVER_URL = args.sendserver + '/api/submit/' + args.metername
+	SERVER_URL = args.sendserver + '/api/submit/' + args.meterid
 	API_KEY = args.apikey
 	print("Sending to netzsinus using the URL", SERVER_URL, "with API-Key", API_KEY)
 else:
@@ -88,20 +90,15 @@ class RingBuffer():
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.  
 class Log():
 	def __init__(self):
-		self.offset = self.getoffset() - FRAMESIZE/RATE
-		print("The clock is ", self.offset, "seconds wrong. Changing timestamps")
+		self.syncWithNTP()		
 		self.data = np.zeros([LOG_SIZE,2],dtype='d')
-		self.index =0
+		self.index = 0
 		if args.sendserver:		
 			self.session = requests.Session()
 			self.session.headers.update({
 				'Content-Type': 'application/json',
 				'X-API-KEY': API_KEY})
     
-	def getoffset(self):
-		c = ntplib.NTPClient()
-		response = c.request('europe.pool.ntp.org', version=3)
-		return response.offset
 
 	def store(self,frequency, calculationTime):
 		measurmentTime = time.time() + self.offset - calculationTime
@@ -121,9 +118,10 @@ class Log():
 			self.index += 1
 		if self.index==LOG_SIZE:
 			self.saveToDisk()
+		if time.time() - self.lastSync > NTP_TIMESYNC_INTERVAL:
+			self.syncWithNTP()	
 		
-		
-
+	
 	def saveToDisk(self):
 		if args.store:		
 			if not args.silent:
@@ -132,6 +130,13 @@ class Log():
 				np.savetxt(f, self.data[:self.index-1],delimiter=",")
 		self.data = np.zeros([LOG_SIZE,2],dtype='d')
 		self.index =0
+
+	def syncWithNTP(self):
+		c = ntplib.NTPClient()
+		response = c.request('europe.pool.ntp.org', version=3)
+		self.offset = response.offset - FRAMESIZE/RATE
+		print("The clock is ", self.offset, "seconds wrong. Changing timestamps")		
+		self.lastSync = time.time()
 
 
 class Capture_Hum (threading.Thread):
