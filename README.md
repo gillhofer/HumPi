@@ -33,6 +33,6 @@ git clone https://github.com/gillhofer/HumPi.git
 ```
 
 ## TODO
-* store raw signal in case of an severe error with the power grid
+* store raw signal in case of an unusual power grid event
 
 
