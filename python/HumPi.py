@@ -204,10 +204,10 @@ class Analyze_Hum(threading.Thread):
             y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                printToConsole(plsq[0][1] + "looks fishy, trying again." , 5)
+                printToConsole(str(plsq[0][1]) + "looks fishy, trying again." , 5)
                 plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE,50,0]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                printToConsole("Now got", plsq[0][1], ". Buffer data is corrupt, need new data", 5)
+                printToConsole("Now got " + str(plsq[0][1]) + ". Buffer data is corrupt, need new data", 5)
                 time.sleep(MEASUREMENT_TIMEFRAME)
                 printToConsole("Back up, continue measurments",5)	    
             else:
