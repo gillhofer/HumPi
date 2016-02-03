@@ -43,7 +43,7 @@ parser.add_argument("--store", help="The file in which measurments get stored", 
 parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
 parser.add_argument("--meterid", help="The name for the meter to use", type=str)
 parser.add_argument("--apikey", help="The API-Key to use", type=str)
-parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.", type=bool)
+parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.", type=int)
 
 args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
@@ -54,11 +54,11 @@ if args.sendserver:
 		print("Please also provide a meter name by specifying the --meterid option")
 		sys.exit(0)		
 	if not args.apikey:
-		print("Please also provide an API-Key by specifying the --apikey option")
+		print("Please also provide an API-Key by specifying the --apikey option.")
 		sys.exit(0)		
 	SERVER_URL = args.sendserver + '/api/submit/' + args.meterid
 	API_KEY = args.apikey
-	print("Sending to netzsinus using the URL", SERVER_URL, "with API-Key", API_KEY)
+	print("Sending to netzsinus using the URL", SERVER_URL, "with given API-Key.")
 else:
 	print("I don't send any data")
 if args.store:
@@ -103,8 +103,7 @@ class Log():
 	def store(self,frequency, calculationTime):
 		measurmentTime = time.time() + self.offset - calculationTime
 		self.data[self.index] =  [measurmentTime, frequency]
-		if not args.silent:
-			print(time.ctime(self.data[self.index,0]), self.data[self.index,1], calculationTime)
+		printToConsole(time.ctime(self.data[self.index,0]) + ", " +str(self.data[self.index,1]) + ", " + str(calculationTime),0)
 		if args.sendserver:
 			payload = {
 				"Value": frequency,
@@ -112,9 +111,9 @@ class Log():
 			try: 
 				r= self.session.post(SERVER_URL, json=payload)
 				if not r.status_code == 200:
-					print("Got HTTP status code", r.status_code)
+					printToConsole("Got HTTP status code" + r.status_code, 10)
 			except Exception as e:
-				print(str(e))
+				printToConsole(str(e), 20)
 			self.index += 1
 		if self.index==LOG_SIZE:
 			self.saveToDisk()
@@ -124,8 +123,7 @@ class Log():
 	
 	def saveToDisk(self):
 		if args.store:		
-			if not args.silent:
-				print("========= Storing logfile ========= ")
+			printToConsole("========= Storing logfile =========",4)
 			with open(MEASUREMENTS_FILE, 'a') as f:
 				np.savetxt(f, self.data[:self.index-1],delimiter=",")
 		self.data = np.zeros([LOG_SIZE,2],dtype='d')
@@ -135,7 +133,7 @@ class Log():
 		c = ntplib.NTPClient()
 		response = c.request('europe.pool.ntp.org', version=3)
 		self.offset = response.offset - FRAMESIZE/RATE
-		print("The clock is ", self.offset, "seconds wrong. Changing timestamps")		
+		printToConsole("The clock is " + str(self.offset) +  " seconds wrong. Changing timestamps", 5)		
 		self.lastSync = time.time()
 
 
@@ -162,7 +160,7 @@ class Capture_Hum (threading.Thread):
             while (not self.stopSignal.is_set()):
                 self.buffer.extend(recorder.read())
         except Exception as e:
-            print(self.name ,str(e))
+            printToConsole(self.name + str(e), 20)
         print(self.name ,"* stopped recording")
 
 
@@ -206,12 +204,12 @@ class Analyze_Hum(threading.Thread):
             y = self.buffer.get(RATE*MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a,b,c]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                print(plsq[0][1], "looks fishy, trying again.")
+                printToConsole(plsq[0][1] + "looks fishy, trying again." , 5)
                 plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE,50,0]),args=(x,y))
             if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                print("Now got", plsq[0][1], ". Buffer data is corrupt, need new data")
+                printToConsole("Now got", plsq[0][1], ". Buffer data is corrupt, need new data", 5)
                 time.sleep(MEASUREMENT_TIMEFRAME)
-                print("Back up, continue measurments")	    
+                printToConsole("Back up, continue measurments",5)	    
             else:
                 frqChange = np.abs(plsq[0][1] - b)
                 frqChangeTime = time.time() - lastMeasurmentTime
@@ -224,7 +222,7 @@ class Analyze_Hum(threading.Thread):
                     lastMeasurmentTime = time.time()
                     log.store(b,lastMeasurmentTime-analyze_start)
                 else: 
-                    print("Frequency Change too big", frqChange, frqChangeTime, frqChange / frqChangeTime, "Buffer is probably corrupt" )
+                    printToConsole("Frequency Change too big " +  str(frqChange) + ", "+ str(frqChangeTime) +", " + str(frqChange / frqChangeTime) + "," + "Buffer is probably corrupt", 5)
                     time.sleep(MEASUREMENT_TIMEFRAME)
 		nrMeasurments+=1
 	    
@@ -235,6 +233,10 @@ def signal_handler(signal, frame):
 	log.saveToDisk()
 	time.sleep(0.5)
 	sys.exit(0)
+
+def printToConsole(message, severity):
+	if not args.silent >=severity:
+		print(message) 
 
 
 log = Log()
