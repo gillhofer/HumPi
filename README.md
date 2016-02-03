@@ -12,7 +12,7 @@ Using a Raspberry Pi to measure the frequency of the synchronous grid of contine
 Sample circuits can be found within the [HW](https://github.com/gillhofer/HumPi/tree/master/HW) directory. 
 
 ## Software requirements
-* Python2
+* Python
 * SciPy ([HowTo](http://wyolum.com/numpyscipymatplotlib-on-raspberry-pi/))
 * [numexpr](https://github.com/pydata/numexpr), alsaaudio and ntplib. You can install these via pip:
 ````
