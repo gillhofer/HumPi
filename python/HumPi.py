@@ -38,7 +38,8 @@ SANITY_LOWER_BOUND = 49.6
 parser = argparse.ArgumentParser()
 parser.add_argument("device", help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",  type=int)
 parser.add_argument("--store", help="The file in which measurments get stored", type=str)
-parser.add_argument("--sendServer", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
+parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
+parser.add_argument("--metername", help="The name for the meter to use", type=str)
 parser.add_argument("--apikey", help="The API-Key to use", type=str)
 parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.", type=bool)
 
@@ -46,13 +47,16 @@ args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device-1]
 print("Using Audio Device", AUDIO_DEVICE_STRING)
-if args.sendServer:
-	SERVER_URL = args.sendServer + '/api/submit/meter1'
+if args.sendserver:
+	if not args.metername:	
+		print("Please also provide a meter name by specifying the --meterName option")
+		sys.exit(0)		
 	if not args.apikey:
 		print("Please also provide an API-Key by specifying the --apikey option")
 		sys.exit(0)		
+	SERVER_URL = args.sendserver + '/api/submit/' + args.metername
 	API_KEY = args.apikey
-	print("Sending to netzsinus using the URL:", SERVER_URL, "with API-Key:", API_KEY)
+	print("Sending to netzsinus using the URL", SERVER_URL, "with API-Key", API_KEY)
 else:
 	print("I don't send any data")
 if args.store:
@@ -88,7 +92,7 @@ class Log():
 		print("The clock is ", self.offset, "seconds wrong. Changing timestamps")
 		self.data = np.zeros([LOG_SIZE,2],dtype='d')
 		self.index =0
-		if args.sendServer:		
+		if args.sendserver:		
 			self.session = requests.Session()
 			self.session.headers.update({
 				'Content-Type': 'application/json',
@@ -104,12 +108,14 @@ class Log():
 		self.data[self.index] =  [measurmentTime, frequency]
 		if not args.silent:
 			print(time.ctime(self.data[self.index,0]), self.data[self.index,1], calculationTime)
-		if args.sendServer:
+		if args.sendserver:
 			payload = {
 				"Value": frequency,
 				"Timestamp": measurmentTime}
 			try: 
 				r= self.session.post(SERVER_URL, json=payload)
+				if not r.status_code == 200:
+					print("Got HTTP status code", r.status_code)
 			except Exception as e:
 				print(str(e))
 			self.index += 1
