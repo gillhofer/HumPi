@@ -131,7 +131,11 @@ class Log():
 
 	def syncWithNTP(self):
 		c = ntplib.NTPClient()
-		response = c.request('europe.pool.ntp.org', version=3)
+		try: 
+			response = c.request('europe.pool.ntp.org', version=3)
+		except Exception as e:
+			printToConsole(str(e), 20)
+
 		self.offset = response.offset - FRAMESIZE/RATE
 		printToConsole("The clock is " + str(self.offset) +  " seconds wrong. Changing timestamps", 5)		
 		self.lastSync = time.time()
