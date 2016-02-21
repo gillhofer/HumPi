@@ -133,12 +133,11 @@ class Log():
 		c = ntplib.NTPClient()
 		try: 
 			response = c.request('europe.pool.ntp.org', version=3)
+			self.offset = response.offset - FRAMESIZE/RATE
+			printToConsole("The clock is " + str(self.offset) +  " seconds wrong. Changing timestamps", 5)		
+			self.lastSync = time.time()
 		except Exception as e:
 			printToConsole(str(e), 20)
-
-		self.offset = response.offset - FRAMESIZE/RATE
-		printToConsole("The clock is " + str(self.offset) +  " seconds wrong. Changing timestamps", 5)		
-		self.lastSync = time.time()
 
 
 class Capture_Hum (threading.Thread):
