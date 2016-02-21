@@ -33,6 +33,7 @@ git clone https://github.com/gillhofer/HumPi.git
 ```
 
 ## TODO
+* Limit the number of POST requests if data is sent.
 * store raw signal in case of an unusual power grid event
 
 
