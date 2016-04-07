@@ -33,6 +33,7 @@ git clone https://github.com/gillhofer/HumPi.git
 ```
 
 ## TODO
+* Correct for soundcard clock errors.
 * Limit the number of POST requests if data is sent.
 * store raw signal in case of an unusual power grid event
 
