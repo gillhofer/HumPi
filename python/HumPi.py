@@ -13,15 +13,18 @@ import ntplib
 import numexpr
 import numpy as np
 from pymongo import MongoClient
+from pymongo import UpdateOne
 from scipy.optimize import leastsq
 
 MEASUREMENT_TIMEFRAME = 1  # s
 BUFFERMAXSIZE = 120  # s
 LOG_SIZE = 100  # measurements
+MAX_DB_DOCUMENT_LENGTH = 256
+DOCUMENT_WRITE_INTERVAL = 32  # measurements
 
 AUDIO_FORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
 CHANNELS = 1
-RATE = 24000
+RATE = 48000
 FRAMESIZE = 1024
 numexpr.set_num_threads(3)
 
@@ -99,7 +102,7 @@ class Log():
     def store(self, frequency, timestamp, calculationTime):
         measurmentTime = timestamp + self.offset
         measurmentTime_ = datetime.utcfromtimestamp(measurmentTime)
-        if len(self.data) > 0 and measurmentTime_.minute != self.data[-1][0].minute:
+        if len(self.data) >= DOCUMENT_WRITE_INTERVAL:
             self.store_to_db(self.data)
             self.data = []
         self.data.append([measurmentTime_, frequency, calculationTime])
@@ -110,14 +113,15 @@ class Log():
         self.index += 1
 
     def store_to_db(self, data):
-        data_dict = {"n_samples": len(data)}
-        data_dict["first"] = data[0][0]
-        data_dict["last"] = data[-1][0]
-        data_dict["rate"] = RATE
-        data_dict["framesize"] = FRAMESIZE
-        data_dict["measurement_timeframe"] = MEASUREMENT_TIMEFRAME
-        data_dict.update({"ts": [d[0] for d in data], "frequ": [d[1] for d in data], "calc_time": [d[2] for d in data]})
-        db.insert_one(data_dict)
+        updates = [UpdateOne({"rate": RATE, "n_samples": {"$lt": MAX_DB_DOCUMENT_LENGTH},
+                    "measurement_timeframe": MEASUREMENT_TIMEFRAME},
+                   {"$push": {"data": {"ts": d[0], "freq": d[1], "calc_time": d[2]}},
+                    "$min": {"first": d[0], "min_freq": d[1], "min_calc_time": d[2]},
+                    "$max": {"last": d[0],"max_freq": d[1], "max_calc_time": d[2]},
+                    "$inc": {"n_samples": 1}},
+                   upsert=True
+                   ) for d in data]
+        db.bulk_write(updates, ordered=True)
         print("Stored to database")
 
     def saveToDisk(self):
