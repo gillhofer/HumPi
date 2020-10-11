@@ -1,20 +1,19 @@
 #!/usr/bin/python
 
-import alsaaudio
 import argparse
-import ntplib
-import numexpr
-import numpy as np
-import requests
 import signal
 import sys
 import threading
 import time
 from datetime import datetime
-from numpy import sin, pi
-from scipy.optimize import leastsq
+from urllib.parse import quote_plus
 
-# import matplotlib.pyplot as plt
+import alsaaudio
+import ntplib
+import numexpr
+import numpy as np
+from pymongo import MongoClient
+from scipy.optimize import leastsq
 
 MEASUREMENT_TIMEFRAME = 1  # s
 BUFFERMAXSIZE = 120  # s
@@ -39,26 +38,24 @@ parser.add_argument("device",
                     help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",
                     type=int)
 parser.add_argument("--store", help="The file in which measurments get stored", type=str)
-parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
-parser.add_argument("--meterid", help="The name for the meter to use", type=str)
-parser.add_argument("--apikey", help="The API-Key to use", type=str)
+# parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
+# parser.add_argument("--meterid", help="The name for the meter to use", type=str)
+# parser.add_argument("--apikey", help="The API-Key to use", type=str)
 parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.",
                     type=int)
+parser.add_argument("--serverurl", help="Path of the mongodb server")
+parser.add_argument("--serveruser", help="mongodb username")
+parser.add_argument("--serverpassword", help="mongodb password")
 
 args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
 AUDIO_DEVICE_STRING = devices[args.device - 1]
 print("Using Audio Device", AUDIO_DEVICE_STRING)
-if args.sendserver:
-    if not args.meterid:
-        print("Please also provide a meter name by specifying the --meterid option")
-        sys.exit(0)
-    if not args.apikey:
-        print("Please also provide an API-Key by specifying the --apikey option.")
-        sys.exit(0)
-    SERVER_URL = args.sendserver + '/api/submit/' + args.meterid
-    API_KEY = args.apikey
-    print("Sending to netzsinus using the URL", SERVER_URL, "with given API-Key.")
+if args.serverurl:
+    uri = "mongodb://%s:%s@%s" % (
+        quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus("192.168.3.1:27017"))
+    client = MongoClient(uri)
+    db = client.gridfrequency.raw
 else:
     print("I don't send any data")
 if args.store:
@@ -70,7 +67,8 @@ else:
 if not args.silent:
     args.silent = 0
 
-class RingBuffer():
+
+class RingBuffer:
     def __init__(self, maxSize):
         self.data = np.zeros(maxSize, dtype='f')
         self.index = 0
@@ -81,7 +79,7 @@ class RingBuffer():
         if length > 0:
             x_index = np.arange(self.index, self.index + length) % self.data.size
             with self.lock:
-                self.data[x_index] = np.fromstring(string, dtype='f')
+                self.data[x_index] = np.frombuffer(string, dtype='f')
                 self.index = x_index[-1] + 1
 
     def get(self, length):
@@ -94,35 +92,33 @@ class RingBuffer():
 class Log():
     def __init__(self):
         self.syncWithNTP()
-        self.data = np.zeros([LOG_SIZE, 2], dtype='d')
+        self.data = []
         self.index = 0
-        if args.sendserver:
-            self.session = requests.Session()
-            self.session.headers.update({
-                'Content-Type': 'application/json',
-                'X-API-KEY': API_KEY})
+        self.last_stored_date = datetime.now()
 
-    def store(self, frequency, calculationTime):
-        measurmentTime = time.time() + self.offset - calculationTime
-        self.data[self.index] = [measurmentTime, frequency]
+    def store(self, frequency, timestamp, calculationTime):
+        measurmentTime = timestamp + self.offset
+        measurmentTime_ = datetime.utcfromtimestamp(measurmentTime)
+        if len(self.data) > 0 and measurmentTime_.minute != self.data[-1][0].minute:
+            self.store_to_db(self.data)
+            self.data = []
+        self.data.append([measurmentTime_, frequency, calculationTime])
         printToConsole(
-            repr(datetime.utcfromtimestamp(self.data[self.index, 0]))  + ", " + str(self.data[self.index, 1]) + ", " + str(calculationTime),
-            0)
-        if args.sendserver:
-            payload = {
-                "Value": frequency,
-                "Timestamp": measurmentTime}
-            try:
-                r = self.session.post(SERVER_URL, json=payload)
-                if not r.status_code == 200:
-                    printToConsole("Got HTTP status code" + r.status_code, 10)
-            except Exception as e:
-                printToConsole(str(e), 20)
-            self.index += 1
-        if self.index == LOG_SIZE:
-            self.saveToDisk()
+            repr(measurmentTime_) + ", " + str(self.data[-1][1]) + ", " + str(calculationTime), 0)
         if time.time() - self.lastSync > NTP_TIMESYNC_INTERVAL:
             self.syncWithNTP()
+        self.index += 1
+
+    def store_to_db(self, data):
+        data_dict = {"n_samples": len(data)}
+        data_dict["first"] = data[0][0]
+        data_dict["last"] = data[-1][0]
+        data_dict["rate"] = RATE
+        data_dict["framesize"] = FRAMESIZE
+        data_dict["measurement_timeframe"] = MEASUREMENT_TIMEFRAME
+        data_dict.update({"ts": [d[0] for d in data], "frequ": [d[1] for d in data], "calc_time": [d[2] for d in data]})
+        db.insert_one(data_dict)
+        print("Stored to database")
 
     def saveToDisk(self):
         if args.store:
@@ -179,11 +175,12 @@ class Analyze_Hum(threading.Thread):
         self.stopSignal = stopSignal
 
     def run(self):
+
         def residuals(p, x, y):
             A, k, theta = p
             x = x
             y = y
-            return numexpr.evaluate('y - A * sin(2 * pi * k * x + theta)')
+            return y - A * np.sin(2 * np.pi * k * x + theta)
 
         print(self.name, "* Started measurements")
         a = INITIAL_SIGNAL_AMPLITUDE
@@ -201,6 +198,7 @@ class Analyze_Hum(threading.Thread):
         TIME_OFFSET = time.time()
 
         while (not self.stopSignal.is_set()):
+            time.sleep(time.time() % 0.5)
             analyze_start = time.time()
             if (nrMeasurments > 200):
                 nrMeasurments = 0
@@ -209,30 +207,30 @@ class Analyze_Hum(threading.Thread):
                             num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
             y = self.buffer.get(RATE * MEASUREMENT_TIMEFRAME)
             plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
-            if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                printToConsole(str(plsq[0][1]) + "looks fishy, trying again.", 5)
-                plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE, 50, 0]), args=(x, y))
-            if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-                printToConsole("Now got " + str(plsq[0][1]) + ". Buffer data is corrupt, need new data", 5)
-                time.sleep(MEASUREMENT_TIMEFRAME)
-                printToConsole("Back up, continue measurments", 5)
+            # if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
+            #    printToConsole(str(plsq[0][1]) + "looks fishy, trying again.", 5)
+            #    plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE, 50, 0]), args=(x, y))
+            # if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
+            #    printToConsole("Now got " + str(plsq[0][1]) + ". Buffer data is corrupt, need new data", 5)
+            #    time.sleep(MEASUREMENT_TIMEFRAME)
+            #    printToConsole("Back up, continue measurments", 5)
+            # else:
+            frqChange = np.abs(plsq[0][1] - b)
+            frqChangeTime = time.time() - lastMeasurmentTime
+            # plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
+            # plt.show()
+            if frqChange / frqChangeTime < SANITY_MAX_FREQUENCYCHANGE:
+                a = plsq[0][0]
+                b = plsq[0][1]
+                c = plsq[0][2]
+                lastMeasurmentTime = time.time()
+                log.store(b, analyze_start, lastMeasurmentTime - analyze_start)
             else:
-                frqChange = np.abs(plsq[0][1] - b)
-                frqChangeTime = time.time() - lastMeasurmentTime
-                # plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
-                # plt.show()
-                if frqChange / frqChangeTime < SANITY_MAX_FREQUENCYCHANGE:
-                    a = plsq[0][0]
-                    b = plsq[0][1]
-                    c = plsq[0][2]
-                    lastMeasurmentTime = time.time()
-                    log.store(b, lastMeasurmentTime - analyze_start)
-                else:
-                    printToConsole(
-                        "Frequency Change too big " + str(frqChange) + ", " + str(frqChangeTime) + ", " + str(
-                            frqChange / frqChangeTime) + "," + "Buffer is probably corrupt", 5)
-                    time.sleep(MEASUREMENT_TIMEFRAME)
-                nrMeasurments += 1
+                printToConsole(
+                    "Frequency Change too big " + str(frqChange) + ", " + str(frqChangeTime) + ", " + str(
+                        frqChange / frqChangeTime) + "," + "Buffer is probably corrupt", 5)
+                time.sleep(MEASUREMENT_TIMEFRAME)
+            nrMeasurments += 1
 
 
 def signal_handler(signal, frame):
