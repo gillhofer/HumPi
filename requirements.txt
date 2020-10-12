@@ -1,3 +1,2 @@
 pyalsaaudio
 ntplib
-numexpr
