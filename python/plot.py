@@ -15,7 +15,7 @@ parser.add_argument("--serverpassword", help="mongodb password")
 
 args = parser.parse_args()
 uri = "mongodb://%s:%s@%s" % (
-    quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus(args.serurl))
+    quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus(args.serverurl))
 client = MongoClient(uri)
 db = client.gridfrequency.raw
 
