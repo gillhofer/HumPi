@@ -10,7 +10,6 @@ from urllib.parse import quote_plus
 
 import alsaaudio
 import ntplib
-import numexpr
 import numpy as np
 from pymongo import MongoClient
 from pymongo import UpdateOne
@@ -26,7 +25,6 @@ AUDIO_FORMAT = format = alsaaudio.PCM_FORMAT_FLOAT_LE
 CHANNELS = 2
 RATE = 44100
 FRAMESIZE = 1024
-numexpr.set_num_threads(3)
 
 INITIAL_SIGNAL_AMPLITUDE = 0.2
 
