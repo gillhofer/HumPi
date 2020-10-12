@@ -22,9 +22,9 @@ LOG_SIZE = 100  # measurements
 MAX_DB_DOCUMENT_LENGTH = 256
 DOCUMENT_WRITE_INTERVAL = 32  # measurements
 
-AUDIO_FORMAT = alsaaudio.PCM_FORMAT_FLOAT_LE
-CHANNELS = 1
-RATE = 48000
+AUDIO_FORMAT = format = alsaaudio.PCM_FORMAT_FLOAT_LE
+CHANNELS = 2
+RATE = 44100
 FRAMESIZE = 1024
 numexpr.set_num_threads(3)
 
@@ -38,12 +38,9 @@ NTP_TIMESYNC_INTERVAL = 1 * 60 * 60  # s
 
 parser = argparse.ArgumentParser()
 parser.add_argument("device",
-                    help="The device to use. Try some (1-10), or get one by using the 'findYourALSADevice.py script'.",
-                    type=int)
+                    help="The device to use. Get one by using the 'findYourALSADevice.py script'.",
+                    type=str)
 parser.add_argument("--store", help="The file in which measurments get stored", type=str)
-# parser.add_argument("--sendserver", help="The server URL submitting to: e.g. \"http://192.168.3.1:8080\"", type=str)
-# parser.add_argument("--meterid", help="The name for the meter to use", type=str)
-# parser.add_argument("--apikey", help="The API-Key to use", type=str)
 parser.add_argument("--silent", help="Don't show measurments as output of HumPi. Only Errors / Exceptions are shown.",
                     type=int)
 parser.add_argument("--serverurl", help="Path of the mongodb server")
@@ -52,11 +49,11 @@ parser.add_argument("--serverpassword", help="mongodb password")
 
 args = parser.parse_args()
 devices = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
-AUDIO_DEVICE_STRING = devices[args.device - 1]
+AUDIO_DEVICE_STRING = args.device
 print("Using Audio Device", AUDIO_DEVICE_STRING)
 if args.serverurl:
     uri = "mongodb://%s:%s@%s" % (
-        quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus("192.168.3.1:27017"))
+        quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus(args.serverurl))
     client = MongoClient(uri)
     db = client.gridfrequency.raw
 else:
@@ -82,7 +79,7 @@ class RingBuffer:
         if length > 0:
             x_index = np.arange(self.index, self.index + length) % self.data.size
             with self.lock:
-                self.data[x_index] = np.frombuffer(string, dtype='f')
+                self.data[x_index] = np.frombuffer(string, dtype="f")[::CHANNELS]
                 self.index = x_index[-1] + 1
 
     def get(self, length):
@@ -92,58 +89,60 @@ class RingBuffer:
 
 
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.
-class Log():
+class Log:
     def __init__(self):
-        self.syncWithNTP()
+        self.sync_with_ntp()
         self.data = []
         self.index = 0
         self.last_stored_date = datetime.now()
+        self.offset = None
+        self.last_sync = None
 
-    def store(self, frequency, timestamp, calculationTime):
-        measurmentTime = timestamp + self.offset
-        measurmentTime_ = datetime.utcfromtimestamp(measurmentTime)
+    def store(self, frequency, timestamp, calculation_time):
+        measurement_time = timestamp + self.offset
+        measurement_time_ = datetime.utcfromtimestamp(measurement_time)
         if len(self.data) >= DOCUMENT_WRITE_INTERVAL:
             self.store_to_db(self.data)
             self.data = []
-        self.data.append([measurmentTime_, frequency, calculationTime])
-        printToConsole(
-            repr(measurmentTime_) + ", " + str(self.data[-1][1]) + ", " + str(calculationTime), 0)
-        if time.time() - self.lastSync > NTP_TIMESYNC_INTERVAL:
-            self.syncWithNTP()
+        self.data.append([measurement_time_, frequency, calculation_time])
+        print_to_console(
+            repr(measurement_time_) + ", " + str(self.data[-1][1]) + ", " + str(calculation_time), 0)
+        if time.time() - self.last_sync > NTP_TIMESYNC_INTERVAL:
+            self.sync_with_ntp()
         self.index += 1
 
     def store_to_db(self, data):
         updates = [UpdateOne({"rate": RATE, "n_samples": {"$lt": MAX_DB_DOCUMENT_LENGTH},
-                    "measurement_timeframe": MEASUREMENT_TIMEFRAME},
-                   {"$push": {"data": {"ts": d[0], "freq": d[1], "calc_time": d[2]}},
-                    "$min": {"first": d[0], "min_freq": d[1], "min_calc_time": d[2]},
-                    "$max": {"last": d[0],"max_freq": d[1], "max_calc_time": d[2]},
-                    "$inc": {"n_samples": 1}},
-                   upsert=True
-                   ) for d in data]
+                              "measurement_timeframe": MEASUREMENT_TIMEFRAME},
+                             {"$push": {"data": {"ts": d[0], "freq": d[1], "calc_time": d[2]}},
+                              "$min": {"first": d[0], "min_freq": d[1], "min_calc_time": d[2]},
+                              "$max": {"last": d[0], "max_freq": d[1], "max_calc_time": d[2]},
+                              "$inc": {"n_samples": 1}},
+                             upsert=True
+                             ) for d in data]
         db.bulk_write(updates, ordered=True)
         print("Stored to database")
 
-    def saveToDisk(self):
+    def save_to_disk(self):
         if args.store:
-            printToConsole("========= Storing logfile =========", 4)
+            print_to_console("========= Storing logfile =========", 4)
             with open(MEASUREMENTS_FILE, 'a') as f:
                 np.savetxt(f, self.data[:self.index - 1], delimiter=",")
         self.data = np.zeros([LOG_SIZE, 2], dtype='d')
         self.index = 0
 
-    def syncWithNTP(self):
+    def sync_with_ntp(self):
         c = ntplib.NTPClient()
         try:
             response = c.request('europe.pool.ntp.org', version=3)
             self.offset = response.offset - FRAMESIZE / RATE
-            printToConsole("The clock is " + str(self.offset) + " seconds wrong. Changing timestamps", 5)
-            self.lastSync = time.time()
+            print_to_console("The clock is " + str(self.offset) + " seconds wrong. Changing timestamps", 5)
+            self.last_sync = time.time()
         except Exception as e:
-            printToConsole(str(e), 20)
+            print_to_console(str(e), 20)
 
 
-class Capture_Hum(threading.Thread):
+class CaptureHum(threading.Thread):
     def __init__(self, threadID, name, buffer, stopSignal):
         threading.Thread.__init__(self)
         self.threadID = threadID
@@ -152,9 +151,10 @@ class Capture_Hum(threading.Thread):
         self.stopSignal = stopSignal
 
     def run(self):
-        recorder = alsaaudio.PCM(alsaaudio.PCM_CAPTURE,
-                                 alsaaudio.PCM_NORMAL,
-                                 AUDIO_DEVICE_STRING)
+        try:
+            recorder = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, AUDIO_DEVICE_STRING)
+        except:
+            signal_handler()
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
         recorder.setformat(AUDIO_FORMAT)
@@ -165,11 +165,11 @@ class Capture_Hum(threading.Thread):
             while (not self.stopSignal.is_set()):
                 self.buffer.extend(recorder.read())
         except Exception as e:
-            printToConsole(self.name + str(e), 20)
+            print_to_console(self.name + repr(e), 20)
         print(self.name, "* stopped recording")
 
 
-class Analyze_Hum(threading.Thread):
+class AnalyzeHum(threading.Thread):
     def __init__(self, threadID, name, buffer, log, stopSignal):
         threading.Thread.__init__(self)
         self.threadID = threadID
@@ -191,13 +191,8 @@ class Analyze_Hum(threading.Thread):
         b = 50
         c = 0
 
-        lastMeasurmentTime = 0
         x = np.linspace(0, 1, num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
-        y = self.buffer.get(RATE * MEASUREMENT_TIMEFRAME)
-        plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
-        a = plsq[0][0]
-        b = plsq[0][1]
-        c = plsq[0][2]
+        a, b, c = self.fit_sine(a, b, c, residuals, x)
         nrMeasurments = 0
         TIME_OFFSET = time.time()
 
@@ -209,44 +204,30 @@ class Analyze_Hum(threading.Thread):
                 TIME_OFFSET = analyze_start
             x = np.linspace(analyze_start - TIME_OFFSET - 1, analyze_start - TIME_OFFSET,
                             num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
-            y = self.buffer.get(RATE * MEASUREMENT_TIMEFRAME)
-            plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
-            # if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-            #    printToConsole(str(plsq[0][1]) + "looks fishy, trying again.", 5)
-            #    plsq = leastsq(residuals, np.array([INITIAL_SIGNAL_AMPLITUDE, 50, 0]), args=(x, y))
-            # if plsq[0][1] < SANITY_LOWER_BOUND or plsq[0][1] > SANITY_UPPER_BOUND:
-            #    printToConsole("Now got " + str(plsq[0][1]) + ". Buffer data is corrupt, need new data", 5)
-            #    time.sleep(MEASUREMENT_TIMEFRAME)
-            #    printToConsole("Back up, continue measurments", 5)
-            # else:
-            frqChange = np.abs(plsq[0][1] - b)
-            frqChangeTime = time.time() - lastMeasurmentTime
-            # plt.plot(x,y, x,plsq[0][0] * sin(2 * pi * plsq[0][1] * x + plsq[0][2]))
-            # plt.show()
-            if frqChange / frqChangeTime < SANITY_MAX_FREQUENCYCHANGE:
-                a = plsq[0][0]
-                b = plsq[0][1]
-                c = plsq[0][2]
-                lastMeasurmentTime = time.time()
-                log.store(b, analyze_start, lastMeasurmentTime - analyze_start)
-            else:
-                printToConsole(
-                    "Frequency Change too big " + str(frqChange) + ", " + str(frqChangeTime) + ", " + str(
-                        frqChange / frqChangeTime) + "," + "Buffer is probably corrupt", 5)
-                time.sleep(MEASUREMENT_TIMEFRAME)
+            b = self.fit_sine(a, b, c, residuals, x)
+            lastMeasurmentTime = time.time()
+            log.store(b, analyze_start, lastMeasurmentTime - analyze_start)
             nrMeasurments += 1
+
+    def fit_sine(self, a, b, c, residuals, x):
+        y = self.buffer.get(RATE * MEASUREMENT_TIMEFRAME)
+        plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
+        a = plsq[0][0]
+        b = plsq[0][1]
+        c = plsq[0][2]
+        return a, b, c
 
 
 def signal_handler(signal, frame):
     print(' --> Exiting HumPi')
     stopSignal.set()
     time.sleep(0.5)
-    log.saveToDisk()
+    log.save_to_disk()
     time.sleep(0.5)
     sys.exit(0)
 
 
-def printToConsole(message, severity):
+def print_to_console(message, severity):
     if args.silent >= severity:
         print(message)
 
@@ -256,9 +237,9 @@ databuffer = RingBuffer(RATE * BUFFERMAXSIZE)
 stopSignal = threading.Event()
 signal.signal(signal.SIGINT, signal_handler)
 
-capture = Capture_Hum(1, "Capture", databuffer, stopSignal)
+capture = CaptureHum(1, "Capture", databuffer, stopSignal)
 capture.start()
 time.sleep(MEASUREMENT_TIMEFRAME + 0.05)
-analyze = Analyze_Hum(2, "Analyze", databuffer, log, stopSignal)
+analyze = AnalyzeHum(2, "Analyze", databuffer, log, stopSignal)
 analyze.start()
 signal.pause()
