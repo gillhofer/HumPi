@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import argparse
+import csv
 import signal
 import sys
 import threading
@@ -91,7 +92,6 @@ class Log:
     def __init__(self):
         self.sync_with_ntp()
         self.data = []
-        self.index = 0
         self.last_stored_date = datetime.now()
         self.offset = None
         self.last_sync = None
@@ -100,16 +100,19 @@ class Log:
         measurement_time = timestamp + self.offset
         measurement_time_ = datetime.utcfromtimestamp(measurement_time)
         if len(self.data) >= DOCUMENT_WRITE_INTERVAL:
-            self.store_to_db(self.data)
+            if args.serverurl:
+                self.store_to_db(self.data)
+            if args.store:
+                self.save_to_disk()
             self.data = []
+
         self.data.append([measurement_time_, frequency, calculation_time])
         print_to_console(
             repr(measurement_time_) + ", " + str(self.data[-1][1]) + ", " + str(calculation_time), 0)
         if time.time() - self.last_sync > NTP_TIMESYNC_INTERVAL:
             self.sync_with_ntp()
-        self.index += 1
 
-    def store_to_db(self, data):
+    def store_to_db(self, data: list):
         updates = [UpdateOne({"rate": RATE, "n_samples": {"$lt": MAX_DB_DOCUMENT_LENGTH},
                               "measurement_timeframe": MEASUREMENT_TIMEFRAME},
                              {"$push": {"data": {"ts": d[0], "freq": d[1], "calc_time": d[2]}},
@@ -125,9 +128,9 @@ class Log:
         if args.store:
             print_to_console("========= Storing logfile =========", 4)
             with open(MEASUREMENTS_FILE, 'a') as f:
-                np.savetxt(f, self.data[:self.index - 1], delimiter=",")
-        self.data = np.zeros([LOG_SIZE, 2], dtype='d')
-        self.index = 0
+                csv_writer = csv.writer(f, delimiter=',')
+                for d in self.data:
+                    csv_writer.writerow(",".join(d))
 
     def sync_with_ntp(self):
         c = ntplib.NTPClient()
