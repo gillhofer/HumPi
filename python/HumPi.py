@@ -1,7 +1,6 @@
-#!/usr/bin/python
-
 import argparse
 import csv
+import pickle
 import signal
 import sys
 import threading
@@ -10,6 +9,7 @@ from datetime import datetime
 from urllib.parse import quote_plus
 
 import alsaaudio
+import bson
 import ntplib
 import numpy as np
 from pymongo import MongoClient
@@ -17,15 +17,18 @@ from pymongo import UpdateOne
 from scipy.optimize import leastsq
 
 MEASUREMENT_TIMEFRAME = 1  # s
-BUFFERMAXSIZE = 120  # s
+BUFFERMAXSIZE = 500  # s
 LOG_SIZE = 100  # measurements
 MAX_DB_DOCUMENT_LENGTH = 256
+MAX_DB_AUDIO_MINUTES = 60
 DOCUMENT_WRITE_INTERVAL = 32  # measurements
+COMPRESSED_AUDIO_SIZE = 4096 * 2
+AUDIO_STORE_INTERVAL = 15
 
 AUDIO_FORMAT = format = alsaaudio.PCM_FORMAT_FLOAT_LE
 CHANNELS = 2
-RATE = 44100
-FRAMESIZE = 1024
+RATE = 192000
+FRAMESIZE = 1024  # my hardware seeems to ignore this value
 
 INITIAL_SIGNAL_AMPLITUDE = 0.2
 
@@ -55,6 +58,7 @@ if args.serverurl:
         quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus(args.serverurl))
     client = MongoClient(uri)
     db = client.gridfrequency.raw
+    audiodb = client.gridfrequency.audio
 else:
     print("I don't send any data")
 if args.store:
@@ -72,29 +76,56 @@ class RingBuffer:
         self.data = np.zeros(maxSize, dtype='f')
         self.index = 0
         self.lock = threading.Lock()
+        self.read_length = []
+        self.last_timestamp = None
 
     def extend(self, stream):
         [length, string] = stream
+        self.read_length.append(length)
         if length > 0:
             x_index = np.arange(self.index, self.index + length) % self.data.size
+            data = np.frombuffer(string, dtype="f")[::CHANNELS]
             with self.lock:
-                self.data[x_index] = np.frombuffer(string, dtype="f")[::CHANNELS]
+                self.last_timestamp = time.time()
+                self.data[x_index] = data
                 self.index = x_index[-1] + 1
 
-    def get(self, length):
+    def get(self, length, with_time_stamp=False):
         with self.lock:
-            idx = np.arange(self.index - length, self.index) % self.data.size
+            index = self.index
+        idx = np.arange(index - length, index) % self.data.size
+        if not with_time_stamp:
             return self.data[idx]
+        else:
+            return self.data[idx], self.last_timestamp
 
 
 # According to Wikipedia, NTP is capable of synchronizing clocks over the web with an error of 1ms. This should be sufficient.
 class Log:
     def __init__(self):
-        self.sync_with_ntp()
         self.data = []
         self.last_stored_date = datetime.now()
         self.offset = None
         self.last_sync = None
+        self.sync_with_ntp()
+
+    def store_audio_to_db(self):
+        y, timestamp = databuffer.get(RATE * AUDIO_STORE_INTERVAL)
+        start_timestamp = timestamp - 1 / RATE * AUDIO_STORE_INTERVAL
+        p = np.fft.rfft(y, COMPRESSED_AUDIO_SIZE * 2)
+        update = UpdateOne({"array_length": int(RATE * AUDIO_STORE_INTERVAL),
+                            "compressed_length": COMPRESSED_AUDIO_SIZE,
+                            "audio_minutes": {"$lt": MAX_DB_AUDIO_MINUTES}},
+                           {"$min": {"first": start_timestamp},
+                            "$max": {"last": start_timestamp},
+                            "$inc": {"audio_minutes": AUDIO_STORE_INTERVAL},
+                            "$push": {"rfft-binary": bson.Binary(pickle.dumps(p[:COMPRESSED_AUDIO_SIZE])),
+                                      "timestamp": start_timestamp},
+                            }, upsert=True)
+        audiodb.write(update)
+        if time.time() - databuffer.last_timestamp > AUDIO_STORE_INTERVAL:
+            self.store_audio_to_db()
+        print("Stored audio to database")
 
     def store(self, frequency, timestamp, calculation_time):
         measurement_time = timestamp + self.offset
@@ -136,7 +167,7 @@ class Log:
         c = ntplib.NTPClient()
         try:
             response = c.request('europe.pool.ntp.org', version=3)
-            self.offset = response.offset - FRAMESIZE / RATE
+            self.offset = response.offset - 940 / RATE
             print_to_console("The clock is " + str(self.offset) + " seconds wrong. Changing timestamps", 5)
             self.last_sync = time.time()
         except Exception as e:
@@ -155,7 +186,7 @@ class CaptureHum(threading.Thread):
         try:
             recorder = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, AUDIO_DEVICE_STRING)
         except:
-            signal_handler()
+            signal_handler(None, None)
         recorder.setchannels(CHANNELS)
         recorder.setrate(RATE)
         recorder.setformat(AUDIO_FORMAT)
@@ -192,7 +223,8 @@ class AnalyzeHum(threading.Thread):
         b = 50
         c = 0
 
-        x = np.linspace(0, 1, num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
+        x = np.linspace(start=c, stop=1 + c, num=RATE) % (np.pi * 4)
+        # x = np.linspace(0, 1, num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
         a, b, c = self.fit_sine(a, b, c, residuals, x)
         nrMeasurments = 0
         TIME_OFFSET = time.time()
@@ -205,13 +237,13 @@ class AnalyzeHum(threading.Thread):
                 TIME_OFFSET = analyze_start
             x = np.linspace(analyze_start - TIME_OFFSET - 1, analyze_start - TIME_OFFSET,
                             num=RATE * MEASUREMENT_TIMEFRAME, endpoint=False)
-            b = self.fit_sine(a, b, c, residuals, x)
+            a, b, c = self.fit_sine(a, b, c, residuals, x)
             lastMeasurmentTime = time.time()
             log.store(b, analyze_start, lastMeasurmentTime - analyze_start)
             nrMeasurments += 1
 
     def fit_sine(self, a, b, c, residuals, x):
-        y = self.buffer.get(RATE * MEASUREMENT_TIMEFRAME)
+        y = self.buffer.get(int(RATE * MEASUREMENT_TIMEFRAME))
         plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
         a = plsq[0][0]
         b = plsq[0][1]
