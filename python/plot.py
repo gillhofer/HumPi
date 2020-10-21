@@ -2,7 +2,7 @@ import argparse
 from datetime import datetime
 from datetime import timedelta
 from urllib.parse import quote_plus
-from pandas.io.json import json_normalize
+from pandas import json_normalize
 
 import matplotlib.pyplot as plt
 import pandas as pd
