@@ -243,8 +243,11 @@ class AnalyzeHum(threading.Thread):
             nrMeasurments += 1
 
     def fit_sine(self, a, b, c, residuals, x):
-        y = self.buffer.get(int(RATE * MEASUREMENT_TIMEFRAME))
-        plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
+        change = SANITY_MAX_FREQUENCYCHANGE + 1
+        while change > SANITY_MAX_FREQUENCYCHANGE:
+            y = self.buffer.get(int(RATE * MEASUREMENT_TIMEFRAME))
+            plsq = leastsq(residuals, np.array([a, b, c]), args=(x, y))
+            change = abs(plsq[0][1] - b)
         a = plsq[0][0]
         b = plsq[0][1]
         c = plsq[0][2]
