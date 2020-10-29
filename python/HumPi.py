@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from enum import Enum
 from urllib.parse import quote_plus
 
 import alsaaudio
@@ -32,9 +33,11 @@ FRAMESIZE = 1024  # my hardware seeems to ignore this value
 
 INITIAL_SIGNAL_AMPLITUDE = 0.2
 
-SANITY_MAX_FREQUENCYCHANGE = 0.03  # Hz/s
+SANITY_MAX_FREQUENCYCHANGE = 0.03 * 50  # Hz/s
 SANITY_UPPER_BOUND = 50.4  # Hz
 SANITY_LOWER_BOUND = 49.6  # Hz
+
+EVENT_THRESHOLD = 0.1  # 50.1 , 49.9
 
 NTP_TIMESYNC_INTERVAL = 1 * 60 * 60  # s
 
@@ -57,13 +60,14 @@ if args.serverurl:
     uri = "mongodb://%s:%s@%s" % (
         quote_plus(args.serveruser), quote_plus(args.serverpassword), quote_plus(args.serverurl))
     client = MongoClient(uri)
-    db = client.gridfrequency.measurment
+    db = client.gridfrequency.measurement
     audiodb = client.gridfrequency.audio
+    events = client.gridfrequency.events
 else:
     print("I don't send any data")
 if args.store:
     MEASUREMENTS_FILE = args.store
-    print("Storing measurments into", MEASUREMENTS_FILE, "by appending to it.")
+    print("Storing measurements into", MEASUREMENTS_FILE, "by appending to it.")
 else:
     print("I don't store any data")
 
@@ -113,6 +117,12 @@ class RingBuffer:
             print_to_console(str(e), 20)
 
 
+class FrequencyEvent(Enum):
+    Nothing = 0
+    HIGH_FREQUENCY = 1
+    LOW_FREQUENCY = -1
+
+
 class Log:
     def __init__(self, sync_timestamp_fn):
         self.sync_with_ntp = sync_timestamp_fn
@@ -120,6 +130,7 @@ class Log:
         self.last_stored_date = datetime.now()
         self.offset = None
         self.last_sync = time.time()
+        self.event_active: FrequencyEvent = FrequencyEvent.Nothing
 
     def store_audio_to_db(self):
         y, timestamp = databuffer.get(RATE * AUDIO_STORE_INTERVAL)
@@ -165,7 +176,44 @@ class Log:
                              upsert=True
                              ) for d in data]
         db.bulk_write(updates, ordered=True)
-        print("Stored to database")
+        self._process_events(data)
+
+    def _process_events(self, data: list):
+        updates = []
+        event = self.event_active
+        for d in data:
+            if d[1] - EVENT_THRESHOLD > 50:  # too high
+                change_needed = event != FrequencyEvent.HIGH_FREQUENCY
+                event = FrequencyEvent.HIGH_FREQUENCY
+            elif d[1] + EVENT_THRESHOLD < 50:  # too low
+                change_needed = event != FrequencyEvent.LOW_FREQUENCY
+                event = FrequencyEvent.LOW_FREQUENCY
+            else:
+                change_needed = event != FrequencyEvent.Nothing
+                event = FrequencyEvent.Nothing
+
+            if change_needed:
+                updates.append(UpdateOne({"Finished": False},
+                                         {"$set": {"Finished": True}}))
+            if event == FrequencyEvent.HIGH_FREQUENCY:
+                updates.append(
+                    UpdateOne({"Finished": False},
+                              {"$set": {"Stop": d[0]},
+                               "$setOnInsert": {"Start": d[0], "Finished": False},
+                               "$max": {"f": d[1]},
+                               }, upsert=True)
+                )
+            if event == FrequencyEvent.LOW_FREQUENCY:
+                updates.append(
+                    UpdateOne({"Finished": False},
+                              {"$set": {"Stop": d[0]},
+                               "$setOnInsert": {"Start": d[0], "Finished": False},
+                               "$min": {"f": d[1]},
+                               }, upsert=True)
+                )
+        if updates:
+            events.bulk_write(updates, ordered=True)
+        self.event_active = event
 
     def save_to_disk(self):
         if args.store:
@@ -174,7 +222,6 @@ class Log:
                 csv_writer = csv.writer(f, delimiter=',')
                 for d in self.data:
                     csv_writer.writerow(",".join(d))
-
 
 
 class CaptureHum(threading.Thread):
@@ -231,7 +278,7 @@ class AnalyzeHum(threading.Thread):
         def residuals(p, data, response):
             return response - p[0] * np.sin(p[1] * data + p[2])
 
-        now = time.time()-BUFFERMAXSIZE
+        now = time.time() - BUFFERMAXSIZE
         change = SANITY_MAX_FREQUENCYCHANGE + 1
         while change > SANITY_MAX_FREQUENCYCHANGE:
             y, last_data_timestamp = self.buffer.get(int(RATE * MEASUREMENT_TIMEFRAME), with_time_stamp=True)
